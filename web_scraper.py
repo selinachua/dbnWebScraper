@@ -1,0 +1,248 @@
+'''
+# Created by:
+# Selina Chua
+# selina.a.chua@gmail.com
+#
+# This file contains the code for web scraping.
+# It scrapes the given link for PDFs and downloads them.
+'''
+
+import requests
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+from constants import *
+from time import sleep
+from policy import Policy
+
+def scrape_single_criteria(criteria, fund_links):
+    '''
+    Scrapes all fund_links for passed in criteria.
+
+    Since each fund can have more than one pdf link if it 
+    has more than one excess value, so we make a 2D 
+    dictionary in this form:
+
+    e.g.:
+    fund_pdfs = {
+        ACA: {pdf_link: Policy class with information}
+        ...
+    }
+    '''
+    browser = webdriver.Chrome()
+    fund_pdfs = {}
+
+    for fund in fund_links:
+        browser.get(get_link(fund, fund_links))
+        nav_to_policy_page(browser)
+        click_criteria(browser, criteria)
+        scrape_results(browser, fund_pdfs, fund, criteria)
+        # break
+
+
+def scrape_results(browser, fund_pdfs, fund, criteria):
+    '''
+    This function goes through all the results of a given
+    criteria and scrapes for their PDF web links. This is 
+    stored in a dictionary, where the key is the fund and
+    the value is a Policy class.
+    '''
+    fund_pdfs[fund] = {}
+
+    results_exist = browser.find_element_by_xpath("//div[@id='Results']/p").text
+    if NO_POLICIES_STR in results_exist:
+        return
+
+    # Clicks all checkboxes and adds to compare page.
+    checkboxes = browser.find_elements_by_xpath(f"//input[@name='SelectedProductKeys']")
+    n_pols = len(checkboxes)
+    for box in checkboxes:
+        statuses = browser.find_elements_by_xpath("//td[@class='ResultColumn_Status']//span")
+        for n in range(n_pols):
+            statuses[n] = statuses[n].text
+        box.click()
+    compare_btn = browser.find_element_by_id("ResultsSubmitCompare")
+    compare_btn.click()
+
+    # Waits until the cards have loaded.
+    for n in range(n_pols):
+        # Grabs current card in focus.
+        focus = WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//*[@class='product focus']"))
+        )
+        # Gets status of the policy.
+        status = statuses[n]
+        # Finds all excess if there are multiple.
+        all_excess = focus.find_elements_by_tag_name('li')
+        for excess in all_excess:
+            print(excess.text)
+            excess.click()
+            pol = create_policy(focus, status, criteria)
+            pdf_link = focus.find_element_by_xpath("//h2/a").get_attribute('href')
+            fund_pdfs[fund][pdf_link] = pol
+        # Closes the current focus card, making a new card the focus card.
+        close_btn = focus.find_element_by_xpath("//h1/button[@title='Click to close']")
+        close_btn.click()
+
+    print_pdf_links(fund_pdfs, fund)
+
+    return fund_pdfs
+        
+def print_pdf_links(fund_pdfs, fund):
+    for link in fund_pdfs[fund]:
+        print(f"--- LINK: {link}")
+        policy = fund_pdfs[fund][link]
+        print(policy)
+
+
+def create_policy(focus, status, criteria):
+    '''
+    Returns a Policy object given the current focus web element.
+    Add as needed.
+    '''
+    fund_name = focus.find_element_by_xpath("//h1/a").text
+    pol_name = focus.find_element_by_xpath("//h2/a").text
+    premium = focus.find_element_by_class_name('premium').text
+    excess = focus.find_element_by_xpath("//div[@class='excess']//span[@class='selected']").text
+    co_pay = focus.find_element_by_xpath("//div[@class='copayment']//div").text 
+    age_disc = focus.find_element_by_xpath("//div[@class='covered']//div").text
+    medicare = focus.find_element_by_xpath("//div[@class='medicare']//span").text 
+    hosp_accom = focus.find_element_by_xpath("//div[@class='cover']//span[@class='sr-only']").text
+    hosp_tier = focus.find_element_by_class_name("hospitalsection").find_element_by_tag_name('span').text
+
+    new_pol = Policy(fund_name, pol_name, status, criteria, premium, excess, co_pay, age_disc,
+        medicare, hosp_accom, hosp_tier)
+
+    return new_pol
+
+
+def click_criteria(browser, criteria):
+    '''
+    Clicks on the criteria on the policies page.
+    '''
+    btn_grps = browser.find_elements_by_class_name("btn-group")
+    click_btn(btn_grps[STATE], criteria.state)
+    click_btn(btn_grps[ADULTS], criteria.adults)
+    click_btn(btn_grps[DPNDNTS], criteria.dpndnts)
+    click_btn(btn_grps[TREATMENT], criteria.pol_type)
+    click_btn(btn_grps[AVAIL], criteria.status)
+    click_btn(btn_grps[CORP], criteria.corp)
+    browser.find_element_by_id("InsurerQuestionsSubmit").submit()
+
+
+def click_btn(elem, type):
+    '''
+    Clicks on the button in the criteria page.
+    '''
+    btn = elem.find_elements_by_css_selector(".btn-phsearch")
+    btn[type].click()
+
+
+def nav_to_policy_page(browser):
+    '''
+    Finds the policy button and navigates to it
+    '''
+    policy_btn = browser.find_element_by_id('nav_policies')
+    policy_btn.click()
+
+
+def get_link(fund, fund_links):
+    '''
+    Returns the actual fund_link given a fund. 
+    '''
+    return MAIN_URL + fund_links[fund][H_REF]
+
+
+def create_all_criteria():
+    '''
+    Creates all the possible criterias for answering the Step 1 -
+    Type of Cover form. 
+    '''
+    f = open(CRITERIA_FILE, "w+")
+    # Cover all criterias in loop
+    for state in range(MAX_STATE + 1):
+        for adults in range(MAX_ADULTS + 1):
+            for dpndnts in range(MAX_DPNDNTS + 1):
+                for treatment in range(MAX_TREATMENT + 1):
+                    for avail in range(MAX_AVAIL + 1):
+                        for corp in range(MAX_CORP + 1):
+                            criteria = str(state) + str(adults) + str(dpndnts) + str(treatment) + str(avail) + str(corp)
+                            f.write(criteria + "\n")
+    f.close()
+
+
+def get_fund_links(soup):
+    '''
+    Goes through the Health Insurers table and creates a dictionary 
+    called fundLinks, which is returned. Key of dictionary is the code, 
+    and value is a tuple containing (title, href).
+    e.g.
+    fundLinks = {
+        AHM: (ahm health insurance, /dynamic/Insurer/Details/AHM)
+        AUF: (Australian Unity Health Limited, /dynamic/Insurer/Details/AUF)
+        ...
+    }
+    '''
+    # Create a dictionary for fundLinks.
+    # Key: ATO ID - e.g. AHM, AUF, etc.
+    # Value: href link to Details page.
+    fund_links = {}
+
+    # Creates a list of TAGS that correspond to the table's rows.
+    fund_elems = soup.find_all('tr')
+    # Removes header row from table.
+    fund_elems = fund_elems[1:] 
+
+    # For every row, we split each cell into elements of an array called cell.
+    # Thus, for every row, we can access cell_array[0] for Insurer,
+    # cell[1] for ATO ID, and etc.
+    for elem in fund_elems:
+        cell_array = elem.find_all('td')
+
+        href_link = cell_array[0].find('a').get('href')
+        elem_title = cell_array[0].find('a').get('title')
+        elem_ID = cell_array[1].string
+
+        fund_links[elem_ID] = (elem_title, href_link)
+
+    return fund_links
+
+
+def get_url(url):
+    '''
+    Downloads the webpage from the url given.
+    '''
+    # Try to get the html. Closes the link if it does not work.
+    try:
+        resp = requests.get(url)
+        if is_good_response(resp):
+            return resp.content
+        else:
+            return None
+    # If we fail to call requests.get
+    except RequestException as e:
+        # # # DO THIS # # # 
+        print(str(e))
+
+
+def is_good_response(resp):
+    """
+    Returns True if the response seems to be HTML, False otherwise.
+    """
+    content_type = resp.headers['Content-Type'].lower()
+    return (resp.status_code == 200 
+            and content_type is not None 
+            and content_type.find('html') > -1)
+
+
+def closePopup(browser):
+    '''
+    Closes browser. 
+    '''
+    try:
+        popup = browser.find_element_by_xpath("//*[@class='close']")
+        popup.click()
+    except:
+        pass
