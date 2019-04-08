@@ -12,8 +12,10 @@
 
 from constants import *
 from web_scraper import *
+from pdf_scraper import *
 from bs4 import BeautifulSoup
 from criteria import Criteria
+import datetime
 
 def main():
     print(TITLE)
@@ -36,7 +38,15 @@ def main():
         print(f"... Scraping online for {line} criteria ...")
         cur_criteria = Criteria(list(line))
         # 2. Gets all pdf_links for cur_criteria in a 2D dictionary.
-        pdfs = scrape_single_criteria(cur_criteria, fund_links)
+        pdfs_dict = scrape_single_criteria(cur_criteria, fund_links)
+        # Creates excel sheet.
+        sheet = EXCEL_SHEET + "Criteria " + line + " " + \
+            datetime.datetime.now().strftime("%d %B %Y at %H.%M") + ".xlsx"
+        create_excel(sheet)
+        # Scrapes pdfs into sheet.
+        scrape_all_pdfs(pdfs_dict, sheet)
+        break
+
 
     crit_file.close()
 

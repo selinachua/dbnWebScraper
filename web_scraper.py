@@ -8,6 +8,7 @@
 '''
 
 import requests
+from requests.exceptions import RequestException
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -15,7 +16,7 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from constants import *
 from time import sleep
-from policy import Policy
+from policy import WebPolicy
 
 def scrape_single_criteria(criteria, fund_links):
     '''
@@ -39,7 +40,9 @@ def scrape_single_criteria(criteria, fund_links):
         nav_to_policy_page(browser)
         click_criteria(browser, criteria)
         scrape_results(browser, fund_pdfs, fund, criteria)
-        # break
+        break
+
+    return fund_pdfs
 
 
 def scrape_results(browser, fund_pdfs, fund, criteria):
@@ -52,7 +55,9 @@ def scrape_results(browser, fund_pdfs, fund, criteria):
     fund_pdfs[fund] = {}
 
     results_exist = browser.find_element_by_xpath("//div[@id='Results']/p").text
+    # No policies found
     if NO_POLICIES_STR in results_exist:
+        print(f"No policies found for {fund}.")
         return
 
     # Clicks all checkboxes and adds to compare page.
@@ -66,21 +71,25 @@ def scrape_results(browser, fund_pdfs, fund, criteria):
     compare_btn = browser.find_element_by_id("ResultsSubmitCompare")
     compare_btn.click()
 
+    # Grabs current card in focus.
+    focus = WebDriverWait(browser, 10).until(
+        EC.presence_of_element_located((By.XPATH, "//*[@class='product focus']"))
+    )
+    hosp_section = focus.find_element_by_class_name("hospitalsection")
+    expand_btn = hosp_section.find_element_by_class_name("expand")
+    expand_btn.click()
+
     # Waits until the cards have loaded.
     for n in range(n_pols):
-        # Grabs current card in focus.
-        focus = WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//*[@class='product focus']"))
-        )
+        focus = browser.find_element_by_xpath("//*[@class='product focus']")
         # Gets status of the policy.
         status = statuses[n]
         # Finds all excess if there are multiple.
         all_excess = focus.find_elements_by_tag_name('li')
         for excess in all_excess:
-            print(excess.text)
             excess.click()
-            pol = create_policy(focus, status, criteria)
             pdf_link = focus.find_element_by_xpath("//h2/a").get_attribute('href')
+            pol = create_policy(browser, focus, status, criteria, pdf_link)
             fund_pdfs[fund][pdf_link] = pol
         # Closes the current focus card, making a new card the focus card.
         close_btn = focus.find_element_by_xpath("//h1/button[@title='Click to close']")
@@ -97,7 +106,7 @@ def print_pdf_links(fund_pdfs, fund):
         print(policy)
 
 
-def create_policy(focus, status, criteria):
+def create_policy(browser, focus, status, criteria, pdf_link):
     '''
     Returns a Policy object given the current focus web element.
     Add as needed.
@@ -110,12 +119,60 @@ def create_policy(focus, status, criteria):
     age_disc = focus.find_element_by_xpath("//div[@class='covered']//div").text
     medicare = focus.find_element_by_xpath("//div[@class='medicare']//span").text 
     hosp_accom = focus.find_element_by_xpath("//div[@class='cover']//span[@class='sr-only']").text
-    hosp_tier = focus.find_element_by_class_name("hospitalsection").find_element_by_tag_name('span').text
 
-    new_pol = Policy(fund_name, pol_name, status, criteria, premium, excess, co_pay, age_disc,
-        medicare, hosp_accom, hosp_tier)
+    hosp_section = focus.find_element_by_class_name("hospitalsection")
+    hosp_tier = hosp_section.find_element_by_tag_name('span').text
+
+    pol_id = pdf_link[len(MAIN_URL + DOWNLOAD_LINK):]
+
+    # Grabs all the hospital covered and non covered things.
+    covered = []
+    not_covered = []
+    limited_cover = []
+    covers = hosp_section.find_elements_by_xpath("//div/div[@class='cover']")
+    get_hosp_covers(covers, covered, not_covered, limited_cover)
+
+    # Gets other hospital features.
+    other_hosp_feature = get_other_hosp_feature(browser, focus)
+
+    new_pol = WebPolicy(fund_name, pol_name, status, criteria, premium, excess, co_pay, age_disc,
+        medicare, hosp_accom, hosp_tier, covered, not_covered, limited_cover, other_hosp_feature, pol_id)
 
     return new_pol
+
+
+def get_other_hosp_feature(browser, focus):
+    '''
+    Gets the other hospital features.
+    '''
+    popover_list = focus.find_elements_by_xpath("//h2/a[@data-toggle='popover']")
+    for popover in popover_list:
+        # print(popover.text)
+        if popover.text == "OTHER HOSPITAL FEATURES":
+            popover.click()
+            break
+    other_info = WebDriverWait(browser, 10).until(
+        EC.presence_of_element_located((By.XPATH, "//div[@role='tooltip']"))
+    )
+    # Strips away the "Other hospital features" header.
+    return other_info.text[23:]
+
+
+def get_hosp_covers(covers, covered, not_covered, limited_cover):
+    '''
+    Gets all the hospital covered and non covered things.
+    '''
+    for cover in covers:
+        cover_name = cover.find_element_by_tag_name('a').text
+        cover_class = cover.find_element_by_tag_name('div').get_attribute('class')
+        if cover_name == '':
+            continue
+        elif cover_class == "notCovered":
+            not_covered.append(cover_name)
+        elif cover_class == "Restricted":
+            limited_cover.append(cover_name)
+        elif cover_class == "covered":
+            covered.append(cover_name)
 
 
 def click_criteria(browser, criteria):

@@ -6,6 +6,11 @@
 # This file contains the constants used throughout the scraper.
 '''
 
+import sys
+
+# Windows Slash is '\\' whereas Unix is '/'
+SLASH = '\\'
+
 # ==================================================================
 # Following constants are links required for scraping.
 # ==================================================================
@@ -16,6 +21,10 @@ RESULTS_LINK = "/ResultsPartial/"
 COMPARE_LINK = FUND_LIST_LINK + "/Compare/"
 GET_COMPARE_LINK = MAIN_URL + "/dynamic/Search/Compare/"
 DOWNLOAD_LINK = "/dynamic/Download/"
+EXCEL_SHEET = sys.path[0] + "/results/"
+TEMP_PDF = sys.path[0] + "/temp/"
+# TEMP_PDF = sys.path[0] + SLASH + "temp" + SLASH + "temp.pdf"
+# EXCEL_SHEET = sys.path[0] + SLASH + "results" + SLASH
 
 RESUME_FILE   = 'resume.txt'
 CRITERIA_FILE = 'criteria.txt'
@@ -94,9 +103,6 @@ NEW_TITLE = "Private Health Information Statement"
 # ==================================================================
 # Miscellaneous constants.
 # ==================================================================
-
-# Windows Slash is '\\' whereas Unix is '/'
-SLASH = '\\'
 
 TITLE = '''============== dbn Web Scraper ==============='''
 LAST_UPDATE = "... Last updated 02/04/19 ..."
