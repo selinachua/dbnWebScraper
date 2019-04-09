@@ -8,9 +8,19 @@
 # populated for the excel spread sheet.
 '''
 
-class pdfPolicy:
-    def __init__(self, pol_id):
-        self.id = pol_id
+class pdfHospPolicy:
+    def __init__(self, pol_type, wp):
+        self.type = pol_type
+        self.wp = wp 
+
+    def __str__(self):
+        string = (
+            f"Type: {self.type}"
+            f"Waiting Period: {self.wp}"
+        )
+        return string
+
+        
 
 
 class WebPolicy:

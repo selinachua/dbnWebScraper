@@ -18,9 +18,11 @@ from io import BytesIO
 from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.styles import Font
-import requests, datetime, re
+import requests, datetime, re, tabula, sys, csv
 
 from constants import *
+from policy import pdfHospPolicy
+from service import Service
 
 
 def scrape_all_pdfs(pdf_dict, sheet):
@@ -59,14 +61,110 @@ def scrape_pdf(pdf_dest):
 
 def scrape_new_pdf(pdf_text):
     print("Scraping new pdf...")
-    # policy_id_regex = re.compile(r'\w\d')
-    policyID = re.search(r'PolicyID: ([A-Z0-0]{6})', pdf_text).group(1)
-    print(policyID)
+    # p = pdfHospPolicy(NEW_PDF)
+    tables = tabula.read_pdf(f"{sys.path[0]}/temp/ACA1.pdf", pages=2, flavor='lattice')
+    print(tables)
+    tabula.convert_into(f"{sys.path[0]}/temp/ACA1.pdf", TEMP_CSV, multiple_tables=True, spreadsheet=True, pages=[1,2], output_format='csv', encoding='utf-8')
+    exit(1)
 
 
 
 def scrape_old_pdf(pdf_text):
+    '''
+    This function scrapes the old pdf for wanted information.
+    '''
     print("Scraping old pdf...")
+
+    issue_date = ""; avail_for = ""
+    waiting_period = ""; payable = ""
+    read_hosp_page_old_pdf(pdf_text, issue_date, avail_for, waiting_period, payable)
+    read_general_old_pdf(pdf_text)
+    
+
+
+def read_general_old_pdf(pdf_text):
+    '''
+    This functions reads the general treatment page in the old pdf.
+    '''
+    # Converts the general table in PDF into CSV format. 
+    tabula.convert_into(f"{sys.path[0]}/temp/NAWT20.pdf", TEMP_CSV, \
+        lattice=True, spreadsheet=True, pages=2, output_format='csv')
+
+    f = open(TEMP_CSV)
+    csv_f = csv.reader(f)
+
+    for row in csv_f:
+        # Special cases:
+        if 'PROVIDER ARRANGEMENTS:' in row[SERVICE]:
+            print("FOUND PROVIDER:", row[SERVICE])
+            continue
+        elif 'FEATURES' in row[SERVICE] \
+            or 'SERVICES' in row[SERVICE] \
+            or not row[SERVICE]:
+            continue
+        # Get the general treatment stuff. 
+        else:
+            name = row[SERVICE]
+            wait = row[WAITING_PERIOD]
+            # If there is no waiting period, service is not covered.
+            if '-' in wait:
+                cover = "No"
+            else:
+                cover = "Yes"
+            limit = row[BENEFIT_LIMITS]
+            max_benefits = row[MAX_BENEFITS]
+            # If max benefits is empty, then it is in limits and limit is the same as previous.
+            if not max_benefits:
+                max_benefits = limit 
+                limit = '-'
+            if cover == "Yes" and limit == '-':
+                limit = "Same as previous."
+            cur_service = Service(name, cover, wait, limit, max_benefits)
+            print("CUR SERVICE", cur_service)
+
+    f.close()
+
+
+
+def read_hosp_page_old_pdf(pdf_text, issue_date, avail_for, waiting_period, payable):
+    '''
+    This function reads the hospital page in the pdf and scrapes 
+    for its issue date and available for.
+    '''
+    # Grabs issue date.
+    issue_date = re.search(r'issued (.*)\n', pdf_text)
+    if issue_date:
+        print(f"ISSUE DATE: {issue_date.group(1)}")
+    else:
+        print ("Couldn't find issue date.")
+    # Grabs available for information.
+    first_lines = pdf_text.rsplit('\n')
+    avail_for = ""
+    for line in first_lines:
+        if 'Residents' in line:
+            avail_for = line
+            break
+    if avail_for:
+        print(f"AVAIL FOR: {avail_for}")
+    else:
+        print("Couldn't find avail for.")
+    
+    # Read rest of hospital page.
+    tabula.convert_into(f"{sys.path[0]}/temp/NAWT20.pdf", TEMP_CSV, \
+        lattice=True, spreadsheet=True, pages=1, output_format='csv')
+
+    f = open(TEMP_CSV)
+    csv_f = csv.reader(f)
+
+    for row in csv_f:
+        # Find waiting period.
+        if 'HOW LONG ARE THE WAITING' in row[SERVICE]:
+            waiting_period = row[INFO]
+        # Find hospital payables. 
+        if 'WILL I HAVE TO PAY' in row[SERVICE]:
+            payable = row[INFO]
+    f.close()
+        
 
 
 def download_pdf(url, dest):
@@ -157,9 +255,11 @@ def get_pdf_type(pdf_text):
 
 
 if __name__ == "__main__":
-    text = pdf_to_text(r"temp/ACA1.pdf")
+    text = pdf_to_text(r"temp/NAWT20.pdf")
     # print(text)
-    scrape_new_pdf(text)
+    # scrape_new_pdf(text)
+    scrape_old_pdf(text)
+    
 
 
     # # Creates excel sheet.

@@ -23,8 +23,10 @@ GET_COMPARE_LINK = MAIN_URL + "/dynamic/Search/Compare/"
 DOWNLOAD_LINK = "/dynamic/Download/"
 EXCEL_SHEET = sys.path[0] + "/results/"
 TEMP_PDF = sys.path[0] + "/temp/"
+TEMP_CSV = sys.path[0] + "/temp/output.csv"
 # TEMP_PDF = sys.path[0] + SLASH + "temp" + SLASH + "temp.pdf"
 # EXCEL_SHEET = sys.path[0] + SLASH + "results" + SLASH
+# TEMP_CSV = sys.path[0] + SLASH + "temp" + SLASH + "output.csv"
 
 RESUME_FILE   = 'resume.txt'
 CRITERIA_FILE = 'criteria.txt'
@@ -98,6 +100,17 @@ NEW_PDF = 1
 
 OLD_TITLE = "Private Health Insurance Standard Information Statement"
 NEW_TITLE = "Private Health Information Statement"
+
+# PDF Page 1 Hospital Cover Info Columns
+SERVICE = 0
+INFO = 1
+
+# PDF Page 2 Treatment Cover Column Names
+SERVICE = 0
+COVER = 1
+WAITING_PERIOD = 2
+BENEFIT_LIMITS = 3
+MAX_BENEFITS = 4
 
 
 # ==================================================================
