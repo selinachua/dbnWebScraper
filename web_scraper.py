@@ -72,6 +72,7 @@ def scrape_results(browser, fund_pdfs, fund, criteria):
     compare_btn.click()
 
     # Grabs current card in focus.
+    # Waits until the cards have loaded.
     focus = WebDriverWait(browser, 10).until(
         EC.presence_of_element_located((By.XPATH, "//*[@class='product focus']"))
     )
@@ -79,7 +80,6 @@ def scrape_results(browser, fund_pdfs, fund, criteria):
     expand_btn = hosp_section.find_element_by_class_name("expand")
     expand_btn.click()
 
-    # Waits until the cards have loaded.
     for n in range(n_pols):
         focus = browser.find_element_by_xpath("//*[@class='product focus']")
         # Gets status of the policy.
@@ -99,6 +99,7 @@ def scrape_results(browser, fund_pdfs, fund, criteria):
 
     return fund_pdfs
         
+        
 def print_pdf_links(fund_pdfs, fund):
     for link in fund_pdfs[fund]:
         print(f"--- LINK: {link}")
@@ -115,7 +116,7 @@ def create_policy(browser, focus, status, criteria, pdf_link):
     pol_name = focus.find_element_by_xpath("//h2/a").text
     premium = focus.find_element_by_class_name('premium').text
     excess = focus.find_element_by_xpath("//div[@class='excess']//span[@class='selected']").text
-    co_pay = focus.find_element_by_xpath("//div[@class='copayment']//div").text 
+    co_pay = focus.find_element_by_xpath("//div[@class='copayment']//span").text 
     age_disc = focus.find_element_by_xpath("//div[@class='covered']//div").text
     medicare = focus.find_element_by_xpath("//div[@class='medicare']//span").text 
     hosp_accom = focus.find_element_by_xpath("//div[@class='cover']//span[@class='sr-only']").text
@@ -135,7 +136,7 @@ def create_policy(browser, focus, status, criteria, pdf_link):
     # Gets other hospital features.
     other_hosp_feature = get_other_hosp_feature(browser, focus)
 
-    new_pol = WebPolicy(fund_name, pol_name, status, criteria, premium, excess, co_pay, age_disc,
+    new_pol = WebPolicy(fund_name, pol_name, pdf_link, status, criteria, premium, excess, co_pay, age_disc,
         medicare, hosp_accom, hosp_tier, covered, not_covered, limited_cover, other_hosp_feature, pol_id)
 
     return new_pol
@@ -147,7 +148,6 @@ def get_other_hosp_feature(browser, focus):
     '''
     popover_list = focus.find_elements_by_xpath("//h2/a[@data-toggle='popover']")
     for popover in popover_list:
-        # print(popover.text)
         if popover.text == "OTHER HOSPITAL FEATURES":
             popover.click()
             break

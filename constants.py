@@ -9,7 +9,8 @@
 import sys
 
 # Windows Slash is '\\' whereas Unix is '/'
-SLASH = '\\'
+# SLASH = '\\'
+SLASH = '/'
 
 # ==================================================================
 # Following constants are links required for scraping.
@@ -26,7 +27,7 @@ TEMP_PDF = sys.path[0] + "/temp/"
 TEMP_CSV = sys.path[0] + "/temp/output.csv"
 # TEMP_PDF = sys.path[0] + SLASH + "temp" + SLASH + "temp.pdf"
 # EXCEL_SHEET = sys.path[0] + SLASH + "results" + SLASH
-# TEMP_CSV = sys.path[0] + SLASH + "temp" + SLASH + "output.csv"
+TEMP_CSV = sys.path[0] + SLASH + "temp" + SLASH + "output.csv"
 
 RESUME_FILE   = 'resume.txt'
 CRITERIA_FILE = 'criteria.txt'
@@ -111,6 +112,79 @@ COVER = 1
 WAITING_PERIOD = 2
 BENEFIT_LIMITS = 3
 MAX_BENEFITS = 4
+
+# ---- EXCEL SPREADSHEET CONSTANTS ---- 
+COL_PDF_TYPE          = 1
+COL_POL_NAME          = 2
+COL_FUND_NAME         = 3
+COL_PDF_LINK          = 4
+
+# Criteria
+COL_STATUS            = 5
+COL_EXCESS            = 6
+COL_MOPREM            = 7
+COL_STATE             = 8
+COL_ADULTS            = 9
+COL_DPNDNTS           = 10
+COL_AVAIL             = 11
+
+# Hospital Cover
+COL_POL_TYPE          = 12
+COL_CORP              = 13
+COL_HOSP_COVERED      = 14
+COL_HOSP_NOT_COVERED  = 15
+COL_HOSP_LIMITED      = 16
+COL_WAIT_PERIODS      = 17
+COL_COPAYMENT         = 18
+COL_OTHER_HOSP        = 19
+
+# General Services 
+COL_GENERAL_DENTAL    = 20
+COL_MAJOR_DENTAL      = 23
+COL_ENDODONTIC        = 26
+COL_ORTHODONTIC       = 29
+COL_OPTICAL           = 32
+COL_NONPSBPHARM       = 35
+COL_PHYSIO            = 38
+COL_CHIRO             = 41
+COL_PODIATRY          = 44
+COL_PSYCH             = 47
+COL_ACUPUNC           = 50
+COL_NATUR             = 53
+COL_MASSAGE           = 56
+COL_HEARING           = 59
+COL_BLOOD             = 62
+COL_AUDIO             = 65
+COL_NATAL             = 68
+COL_CHINESE           = 71
+COL_DIETARY           = 74
+COL_EXERCISE_PHYSIO   = 77
+COL_EYE_THERAPY       = 80
+COL_HEALTH_LIFE       = 83
+COL_HOME_NURSING      = 86
+COL_OCCUPATIONAL_THER = 89
+COL_ORTHOTICS         = 92
+COL_OSTEOPATHY        = 95
+COL_SPEECH            = 98
+COL_VACCINATIONS      = 101
+
+
+# Other
+COL_AMBULANCE_EMER    = 104
+COL_AMBULANCE_WP      = 104
+COL_AMBULANCE_FEE     = 105
+COL_AMBULANCE_LIMITS  = 105
+COL_AMBULANCE_OTHER   = 106
+COL_AMBULANCE_MAX_BEN = 106
+COL_OTHER             = 107
+COL_MEDICARE          = 108
+COL_ISSUE_DATE        = 109
+COL_AVAIL_FOR         = 110
+COL_PROV_ARR          = 111
+COL_AGE_DISC          = 112
+COL_TRAV_ACCOM_BEN    = 113
+COL_POL_ID            = 114
+COL_ACCIDENT_COV      = 115
 
 
 # ==================================================================

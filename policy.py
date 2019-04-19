@@ -8,27 +8,13 @@
 # populated for the excel spread sheet.
 '''
 
-class pdfHospPolicy:
-    def __init__(self, pol_type, wp):
-        self.type = pol_type
-        self.wp = wp 
-
-    def __str__(self):
-        string = (
-            f"Type: {self.type}"
-            f"Waiting Period: {self.wp}"
-        )
-        return string
-
-        
-
-
-class WebPolicy:
-    def __init__(self, fund_name, name, status, criteria, premium, excess, co_pay, age_disc,
+class WebPolicy():
+    def __init__(self, fund_name, name, pdf_link, status, criteria, premium, excess, co_pay, age_disc,
                     medicare, hosp_accom, hosp_tier, covered, not_covered, limited_cover,
                     other_hosp_feature, pol_id):
         self.fund_name = fund_name
         self.name = name
+        self.pdf_link = pdf_link
         self.status = status
         self.criteria = criteria
         self.premium = premium
@@ -60,7 +46,7 @@ class WebPolicy:
             f"Not Covered: {self.not_covered}\n"
             f"Limited Cover: {self.limited_cover}\n"
             f"Other Hosptial Features: {self.other_hosp_feature}\n"
-            f"Policy ID: {self.id}"
+            f"Policy ID: {self.id}\n"
         )
         string += self.criteria.__str__()
         return string
