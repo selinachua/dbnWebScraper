@@ -14,11 +14,17 @@ from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.converter import TextConverter
 from pdfminer.layout import LAParams
 from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfparser import PDFParser
+from pdfminer.pdfdocument import PDFDocument
+from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfinterp import resolve1
+
 from io import BytesIO
 from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 import requests, datetime, re, tabula, sys, csv
+import camelot
 
 from constants import *
 from service import Service
@@ -27,7 +33,7 @@ from policy import WebPolicy
 from criteria import Criteria
 
 
-def scrape_all_pdfs(pdf_dict, sheet):
+def scrape_all_pdfs(pdf_dict, sheet, pol_type):
     '''
     This function is the main pdf_scraper function. It iterates 
     through all the pdfs inside the dictionary and scrapes all
@@ -41,7 +47,7 @@ def scrape_all_pdfs(pdf_dict, sheet):
         for link in pdf_dict[fund]:
             pdf_dest = TEMP_PDF + fund + str(pdf_num) + ".pdf"
             download_pdf(link, pdf_dest)
-            pdf_info = scrape_pdf(pdf_dest)
+            pdf_info = scrape_pdf(pdf_dest, pol_type)
             # Popualate the excel spreadsheet.
             if pdf_info.pdf_type == OLD_PDF:
                 old_populate_excel(pdf_dict[fund][link], pdf_info, ws, input_row)
@@ -56,7 +62,7 @@ def scrape_all_pdfs(pdf_dict, sheet):
     # Clean up temp folder using shutil.rmtree()
 
 
-def scrape_pdf(pdf_dest):
+def scrape_pdf(pdf_dest, pol_type):
     '''
     This function scrapes the pdf according to its type.
     '''
@@ -66,20 +72,94 @@ def scrape_pdf(pdf_dest):
     if pdf_type == NEW_PDF:
         pdf_info = scrape_new_pdf(pdf_text)
     elif pdf_type == OLD_PDF:
-        pdf_info = scrape_old_pdf(pdf_text)
+        pdf_info = scrape_old_pdf(pdf_text, pol_type)
     else:
         pdf_info = "Couldn't identify PDF type."
 
     return pdf_info
 
 
-def scrape_new_pdf(pdf_text):
-    print("Scraping new pdf...")
-    # tables = tabula.read_pdf(f"{sys.path[0]}/temp/NKHZ20.pdf", pages=, flavor='lattice')
-    # print(tables)
-    # tabula.convert_into(f"{sys.path[0]}/temp/NKHZ20.pdf", TEMP_CSV, multiple_tables=True, spreadsheet=True, pages=[1,2], output_format='csv', encoding='utf-8')
-    # exit(1)
+def scrape_new_pdf(pdf_path, web_policy):
+    print("... Scraping new pdf...")
+    # Gets number of pages in pdf. 
+    pdf_path = f"{sys.path[0]}/temp/ACA1.pdf"
+    file = open(pdf_path, 'rb')
+    parser = PDFParser(file)
+    document = PDFDocument(parser)
+    n_pages = resolve1(document.catalog['Pages'])['Count']
+    text = pdf_to_text(pdf_path)
+    # Reads the pdf.
+    if web_policy.pol_type == HOSPITAL:
+        read_hosp_page_new_pdf(text)
+    elif web_policy.pol_type == GEN_TREATMENT:
+        gen_services = read_general_new_pdf(pdf_path, web_policy.pol_type, n_pages)
+    elif web_policy.pol_type == COMBINED_TREATMENT:
+        read_hosp_page_new_pdf(text)
+        gen_services = read_general_new_pdf(pdf_path, web_policy.pol_type, n_pages)
+    else:
+        read_ambulance_page()
 
+def read_hosp_page_new_pdf(pdf_text):
+    '''
+    Gets:
+    - Waiting periods
+    - Availability 
+    - Available for 
+    - Travel and accom benefits
+    - Accident Cover 
+    - Provider Arrangemnets
+    '''
+    print(pdf_text)
+
+def read_general_new_pdf(pdf_path, pol_type, n_pages):
+    '''
+    Gets all the general services.
+    '''
+    if pol_type == GEN_TREATMENT:
+        if n_pages == 1:
+            pages = '1'
+        else:
+            pages = '1,2'
+    else:
+        if n_pages == 2:
+            pages = '2'
+        else: 
+            pages = '2,3'
+    # Gets the general tables.
+    tables = camelot.read_pdf(pdf_path, pages)
+    n_tables = len(tables)
+    tables[0].to_csv('tmp.csv')
+    
+    services = {}
+    f1 = open('tmp.csv')
+    csv_f = csv.reader(f1)
+    for row in csv_f:
+        if 'Treatment' in row[SERVICE]:
+            continue
+        name = row[SERVICE]
+        wait = row[NEW_WAIT_PERIOD]
+        limits = row[NEW_BENEFIT_LIMITS]
+        max_ben = row[NEW_MAX_BENEFITS]
+
+        serv = Service(name, "Yes", wait, limits, max_ben)
+        services[name] = serv
+    f1.close()
+
+    if n_tables > 1:
+        tables[n_tables-1].to_csv('tmp.csv')
+        f2 = open('tmp.csv')
+        csv_f = csv.reader(f2)
+        for row in csv_f:
+            name = row[SERVICE]
+            wait = row[NEW_WAIT_PERIOD]
+            limit = row[NEW_BENEFIT_LIMITS]
+            max_ben = row[NEW_MAX_BENEFITS]
+            serv = Service(name, "Yes", wait, limit, max_ben)
+            services[name] = serv
+        f2.close()
+    
+    return services
+    
 
 def old_populate_excel(web_policy, pdf_info, ws, input_row):
     # Input web policy information.
@@ -99,10 +179,11 @@ def old_populate_excel(web_policy, pdf_info, ws, input_row):
     ws.cell(row=input_row, column=COL_MEDICARE).value = web_policy.medicare
     ws.cell(row=input_row, column=COL_POL_ID).value = web_policy.id
     ws.cell(row=input_row, column=COL_STATE).value = states[web_policy.criteria.state]
-    ws.cell(row=input_row, column=COL_ADULTS).value = states[web_policy.criteria.adults]
-    ws.cell(row=input_row, column=COL_DPNDNTS).value = states[web_policy.criteria.dpndnts]
-    ws.cell(row=input_row, column=COL_POL_TYPE).value = states[web_policy.criteria.pol_type]
-    ws.cell(row=input_row, column=COL_CORP).value = states[web_policy.criteria.corp]
+    ws.cell(row=input_row, column=COL_ADULTS).value = n_adults[web_policy.criteria.adults]
+    ws.cell(row=input_row, column=COL_DPNDNTS).value = dpndnts[web_policy.criteria.dpndnts]
+    ws.cell(row=input_row, column=COL_POL_TYPE).value = policy[web_policy.criteria.pol_type]
+    ws.cell(row=input_row, column=COL_AVAIL).value = avail[web_policy.criteria.status]
+    ws.cell(row=input_row, column=COL_CORP).value = corp[web_policy.criteria.corp]
     ws.cell(row=input_row, column=COL_PROV_ARR).value = pdf_info.prov_arr
     ws.cell(row=input_row, column=COL_ISSUE_DATE).value = pdf_info.issue_date
     ws.cell(row=input_row, column=COL_AVAIL_FOR).value = pdf_info.avail_for
@@ -195,25 +276,31 @@ def old_populate_excel(web_policy, pdf_info, ws, input_row):
             ws.cell(row=input_row, column=col+2).value = pdf_info.services[service].max_benefits
 
 
-def scrape_old_pdf(pdf_text):
+def scrape_old_pdf(pdf_text, pol_type):
     '''
     This function scrapes the old pdf for wanted information.
     '''
     print("Scraping old pdf...")
 
     pdf_hosp_info = read_hosp_page_old_pdf(pdf_text)
-    pdf_info = read_general_old_pdf(pdf_text, pdf_hosp_info)
+    if pol_type == 'Hospital':
+        return pdf_hosp_info
+    pdf_info = read_general_old_pdf(pdf_text, pdf_hosp_info, pol_type)
     return pdf_info
     
 
-
-def read_general_old_pdf(pdf_text, oldpdf_class):
+def read_general_old_pdf(pdf_text, oldpdf_class, pol_type):
     '''
     This functions reads the general treatment page in the old pdf.
     '''
+    # Calculates page of the general.
+    page = 2
+    if pol_type == GEN_TREATMENT:
+        page = 1
+
     # Converts the general table in PDF into CSV format. 
     tabula.convert_into(f"{sys.path[0]}/temp/NJKD20.pdf", TEMP_CSV, \
-        lattice=True, spreadsheet=True, pages=2, output_format='csv')
+        lattice=True, spreadsheet=True, pages=page, output_format='csv')
 
     f = open(TEMP_CSV)
     csv_f = csv.reader(f)
@@ -256,7 +343,6 @@ def read_general_old_pdf(pdf_text, oldpdf_class):
     return oldpdf_class
 
 
-
 def read_hosp_page_old_pdf(pdf_text):
     '''
     This function reads the hospital page in the pdf and scrapes 
@@ -264,7 +350,7 @@ def read_hosp_page_old_pdf(pdf_text):
     '''
     # Grabs issue date.
     try:
-        issue_date = str(re.search(r'issued (.*)\n', pdf_text)).group(1)
+        issue_date = str(re.search(r'issued (.*)\n', pdf_text).group(1))
     except:
         issue_date = "Can't find issue date"
     # Grabs available for information.
@@ -295,7 +381,6 @@ def read_hosp_page_old_pdf(pdf_text):
     return oldPdfInfo(OLD_PDF, None, None, issue_date, avail_for, payable, waiting_period, None)
     
 
-
 def download_pdf(url, dest):
     '''
     This function downloads the pdf given a url
@@ -313,7 +398,7 @@ def create_excel(destination):
     wb = Workbook()
     ws = wb.active
     colname = ["PDF Type", "Name", "Fund", "PDFLink", "Status", "Excess", \
-            "Monthly Premium", "State", "Adults", "Scale (Adults + Dependants)", \
+            "Monthly Premium", "State", "Adults", "Dependants", \
             "Availability", "Policy Type", "Corporate Product", \
             "Hospital Cover During Visit", "Hospital Services not Covered", \
             "Hospital Services Limited Cover", "Waiting periods", "Copayment", \
@@ -397,18 +482,28 @@ def get_pdf_type(pdf_text):
 
 
 if __name__ == "__main__":
-    text = pdf_to_text(r"temp/NJKD20.pdf")
-    print(text)
-    # scrape_new_pdf(text)
-    crit = Criteria("000000")
-    web_policy = WebPolicy("ACA", "Gold Deluxe Hospital", "link", "Open", crit, "100", "no excess", "no copay", "no age disc", "No medicare", "No", "no", ["a", 'b'], ['c', 'd'], ['e', 'f'], "other", "J20")
-    pdf_info = scrape_old_pdf(text)
+    pdf_path = f"{sys.path[0]}/temp/WAOY1D.pdf"
+    pol_type = COMBINED_TREATMENT
+    n_pages  = 4
+    text = pdf_to_text(pdf_path)
+    read_hosp_page_new_pdf(text)
 
-    # Creates excel sheet.
-    line = "000000"
-    sheet = "results.xlsx"
-    create_excel(sheet)
-    wb = load_workbook(sheet)
-    ws = wb.active
-    old_populate_excel(web_policy, pdf_info, ws, 2)
-    wb.save(sheet)
+
+
+
+    # text = pdf_to_text(r"temp/NJKD20.pdf")
+    # print(text)
+    # # scrape_new_pdf(text)
+    # crit = Criteria("000100")
+    # web_policy = WebPolicy("ACA", "Gold Deluxe Hospital", "link", "Open", crit, "100", "no excess", "no copay", "no age disc", "No medicare", "No", "no", ["a", 'b'], ['c', 'd'], ['e', 'f'], "other", "J20")
+    # print(web_policy.criteria.pol_type)
+    # pdf_info = scrape_old_pdf(text, web_policy.criteria.pol_type)
+
+    # # Creates excel sheet.
+    # line = "000000"
+    # sheet = "results.xlsx"
+    # create_excel(sheet)
+    # wb = load_workbook(sheet)
+    # ws = wb.active
+    # old_populate_excel(web_policy, pdf_info, ws, 2)
+    # wb.save(sheet)
