@@ -29,8 +29,11 @@ import camelot
 from constants import *
 from service import Service
 from oldpdf_classes import oldPdfInfo
+from newpdf_class import NewHospInfo, AmbulanceInfo, NewPDFInfo
 from policy import WebPolicy
 from criteria import Criteria
+from shutil import rmtree
+from os import makedirs
 
 
 def scrape_all_pdfs(pdf_dict, sheet, pol_type):
@@ -42,27 +45,32 @@ def scrape_all_pdfs(pdf_dict, sheet, pol_type):
     wb = load_workbook(sheet)
     ws = wb.active
     input_row = 2
+
     for fund in pdf_dict:
+        print(f"Scraping pdfs for {fund}")
         pdf_num = 1
         for link in pdf_dict[fund]:
             pdf_dest = TEMP_PDF + fund + str(pdf_num) + ".pdf"
             download_pdf(link, pdf_dest)
-            pdf_info = scrape_pdf(pdf_dest, pol_type)
-            # Popualate the excel spreadsheet.
+            print(f"Scraping PDF #{pdf_num} out of {len(pdf_dict[fund])}", end='\r')
+            # Scrape the pdf for required information.
+            pdf_info = scrape_pdf(pdf_dest, pol_type, pdf_dict[fund][link])
+            # Populate the excel spreadsheet.
             if pdf_info.pdf_type == OLD_PDF:
                 old_populate_excel(pdf_dict[fund][link], pdf_info, ws, input_row)
             elif pdf_info.pdf_type == NEW_PDF:
-                new_populate_excel()
+                new_populate_excel(pdf_dict[fund][link], pdf_info, ws, input_row)
             input_row += 1
             pdf_num += 1
-            break
-        break
+        print("\n")
     wb.save(sheet)
 
-    # Clean up temp folder using shutil.rmtree()
+    # Clean up temp folder and recreate empty one.
+    rmtree(f"{sys.path[0]}/temp")
+    makedirs(f"{sys.path[0]}/temp")
 
 
-def scrape_pdf(pdf_dest, pol_type):
+def scrape_pdf(pdf_dest, pol_type, web_policy):
     '''
     This function scrapes the pdf according to its type.
     '''
@@ -70,9 +78,9 @@ def scrape_pdf(pdf_dest, pol_type):
     pdf_type = get_pdf_type(pdf_text)
     
     if pdf_type == NEW_PDF:
-        pdf_info = scrape_new_pdf(pdf_text)
+        pdf_info = scrape_new_pdf(pdf_dest, web_policy)
     elif pdf_type == OLD_PDF:
-        pdf_info = scrape_old_pdf(pdf_text, pol_type)
+        pdf_info = scrape_old_pdf(pdf_dest, pdf_text, pol_type)
     else:
         pdf_info = "Couldn't identify PDF type."
 
@@ -80,41 +88,273 @@ def scrape_pdf(pdf_dest, pol_type):
 
 
 def scrape_new_pdf(pdf_path, web_policy):
-    print("... Scraping new pdf...")
+    '''
+    This function scrapes information from the new PDF.
+    '''
     # Gets number of pages in pdf. 
-    pdf_path = f"{sys.path[0]}/temp/ACA1.pdf"
     file = open(pdf_path, 'rb')
     parser = PDFParser(file)
     document = PDFDocument(parser)
     n_pages = resolve1(document.catalog['Pages'])['Count']
     text = pdf_to_text(pdf_path)
     # Reads the pdf.
-    if web_policy.pol_type == HOSPITAL:
-        read_hosp_page_new_pdf(text)
-    elif web_policy.pol_type == GEN_TREATMENT:
-        gen_services = read_general_new_pdf(pdf_path, web_policy.pol_type, n_pages)
-    elif web_policy.pol_type == COMBINED_TREATMENT:
-        read_hosp_page_new_pdf(text)
-        gen_services = read_general_new_pdf(pdf_path, web_policy.pol_type, n_pages)
-    else:
-        read_ambulance_page()
+    ambulance_info = read_ambulance_page(text)
+    if web_policy.criteria.pol_type == AMBULANCE_ONLY:
+        return NewPDFInfo(NEW_PDF, None, {}, ambulance_info)
+
+    hosp_info = read_hosp_page_new_pdf(text)
+    gen_services = read_general_new_pdf(pdf_path, web_policy.criteria.pol_type, n_pages)
+
+    return NewPDFInfo(NEW_PDF, hosp_info, gen_services, ambulance_info)
+
+
+def new_populate_excel(web_policy, pdf_info, ws, input_row):
+    '''
+    This function populates excel from a new pdf class.
+    '''
+    # Input web policy information.
+    if pdf_info.pdf_type == OLD_PDF:
+        ws.cell(row=input_row, column=COL_PDF_TYPE).value = "OLD"
+    elif pdf_info.pdf_type == NEW_PDF:
+        ws.cell(row=input_row, column=COL_PDF_TYPE).value = "NEW"
+
+    ws.cell(row=input_row, column=COL_POL_NAME).value = web_policy.name
+    ws.cell(row=input_row, column=COL_FUND_NAME).value = web_policy.fund_name
+    ws.cell(row=input_row, column=COL_PDF_LINK).value = web_policy.pdf_link
+    ws.cell(row=input_row, column=COL_STATUS).value = web_policy.status
+    ws.cell(row=input_row, column=COL_MOPREM).value = web_policy.premium 
+    ws.cell(row=input_row, column=COL_EXCESS).value = web_policy.excess
+    ws.cell(row=input_row, column=COL_COPAYMENT).value = web_policy.co_pay
+    ws.cell(row=input_row, column=COL_AGE_DISC).value = web_policy.age_disc
+    ws.cell(row=input_row, column=COL_MEDICARE).value = web_policy.medicare
+    ws.cell(row=input_row, column=COL_POL_ID).value = web_policy.id
+    ws.cell(row=input_row, column=COL_STATE).value = states[web_policy.criteria.state]
+    ws.cell(row=input_row, column=COL_ADULTS).value = n_adults[web_policy.criteria.adults]
+    ws.cell(row=input_row, column=COL_DPNDNTS).value = dpndnts[web_policy.criteria.dpndnts]
+    ws.cell(row=input_row, column=COL_POL_TYPE).value = policy[web_policy.criteria.pol_type]
+    ws.cell(row=input_row, column=COL_AVAIL).value = avail[web_policy.criteria.status]
+    ws.cell(row=input_row, column=COL_CORP).value = corp[web_policy.criteria.corp]
+    ws.cell(row=input_row, column=COL_AMBULANCE_EMER).value = pdf_info.ambulance.emer
+    ws.cell(row=input_row, column=COL_AMBULANCE_FEE).value = pdf_info.ambulance.callout
+    ws.cell(row=input_row, column=COL_AMBULANCE_OTHER).value = pdf_info.ambulance.other
+
+    if web_policy.criteria.pol_type != AMBULANCE_ONLY:
+        ws.cell(row=input_row, column=COL_TRAV_ACCOM_BEN).value = pdf_info.hosp.travel_ben
+        ws.cell(row=input_row, column=COL_ACCIDENT_COV).value = pdf_info.hosp.accident_cover
+        ws.cell(row=input_row, column=COL_PROV_ARR).value = pdf_info.hosp.prov_arr
+        ws.cell(row=input_row, column=COL_ISSUE_DATE).value = pdf_info.hosp.issue_date
+        ws.cell(row=input_row, column=COL_AVAIL_FOR).value = pdf_info.hosp.avail_for
+        ws.cell(row=input_row, column=COL_WAIT_PERIODS).value = pdf_info.hosp.wait
+        ws.cell(row=input_row, column=COL_OTHER).value = pdf_info.hosp.general_other
+        ws.cell(row=input_row, column=COL_OTHER_HOSP).value = pdf_info.hosp.hosp_other
+    
+     # Inputting hospital cover details.
+    covered = ""
+    for c in web_policy.covered:
+        covered += f"{c}, "
+    ws.cell(row=input_row, column=COL_HOSP_COVERED).value = covered
+    not_covered = ""
+    for c in web_policy.not_covered:
+        not_covered += f"{c}, "
+    ws.cell(row=input_row, column=COL_HOSP_NOT_COVERED).value = not_covered
+    limited_cover = ""
+    for c in web_policy.limited_cover:
+        limited_cover += f"{c}, "
+    ws.cell(row=input_row, column=COL_HOSP_LIMITED).value = limited_cover
+
+    # Inputting general details.
+    for service in pdf_info.services:
+        col = ''
+        s = service.lower()
+        if 'general' in s:
+            col = COL_GENERAL_DENTAL
+        elif 'major' in s:
+            col = COL_MAJOR_DENTAL
+        elif 'endodontic' in s:
+            col = COL_ENDODONTIC
+        elif 'orthodontic' in s:
+            col = COL_ORTHODONTIC
+        elif 'optical' in s:
+            col = COL_OPTICAL
+        elif 'non pbs' in s:
+            col = COL_NONPSBPHARM
+        elif 'exercise physiology' in s:
+            col = COL_EXERCISE_PHYSIO
+        elif 'physio' in s:
+            col = COL_PHYSIO
+        elif 'chiro' in s:
+            col = COL_CHIRO
+        elif 'podiatry' in s:
+            col = COL_PODIATRY
+        elif 'psychology' in s:
+            col = COL_PSYCH
+        elif 'acupuncture' in s:
+            col = COL_ACUPUNC
+        elif 'naturopathy' in s:
+            col = COL_NATUR
+        elif 'massage' in s:
+            col = COL_MASSAGE
+        elif 'hearing aids' in s:
+            col = COL_HEARING
+        elif 'glucose' in s:
+            col = COL_BLOOD
+        elif 'audiology' in s:
+            col = COL_AUDIO
+        elif 'antenatal' in s:
+            col = COL_NATAL
+        elif 'chinese' in s:
+            col = COL_CHINESE
+        elif 'dietetics' in s:
+            col = COL_DIETARY
+        elif 'orthoptics' in s:
+            col = COL_EYE_THERAPY
+        elif 'health management' in s:
+            col = COL_HEALTH_LIFE
+        elif 'nursing' in s:
+            col = COL_HOME_NURSING
+        elif 'occupational therapy' in s:
+            col = COL_OCCUPATIONAL_THER
+        elif 'orthotics' in s:
+            col = COL_ORTHOTICS
+        elif 'osteopathy' in s:
+            col = COL_OSTEOPATHY
+        elif 'speech' in s:
+            col = COL_SPEECH
+        elif 'vaccinations' in s:
+            col = COL_VACCINATIONS
+        
+        if col != '':
+            ws.cell(row=input_row, column=col).value = pdf_info.services[service].wait 
+            ws.cell(row=input_row, column=col+1).value = pdf_info.services[service].limits 
+            ws.cell(row=input_row, column=col+2).value = pdf_info.services[service].max_benefits
+
+
+def read_ambulance_page(pdf_text):
+    '''
+    Reads ambulance information.
+    '''
+    # Get emergency
+    pattern = re.compile(r'Emergency: (.+)+')
+    matches = pattern.finditer(pdf_text)
+    emer = "-"
+    for match in matches:
+        emer = match.group(1)
+
+    # Get callout fees
+    pattern = re.compile(r'Call-out fees: (.+)+')
+    matches = pattern.finditer(pdf_text)
+    callout = "-"
+    for match in matches:
+        callout = match.group(1)
+    
+    # Get other
+    other = "-"
+    pattern = re.compile(r'Other features of this ambulance cover([.\s\S]+)For further')
+    matches = pattern.finditer(pdf_text)
+    for match in matches:
+        other = match.group(1).strip()
+        if "PolicyID:" in other:
+            cut = other.index('Page')
+            other = other[cut+12:].strip()
+    
+    return AmbulanceInfo(emer, callout, other)
+
 
 def read_hosp_page_new_pdf(pdf_text):
     '''
     Gets:
-    - Waiting periods
-    - Availability 
-    - Available for 
-    - Travel and accom benefits
-    - Accident Cover 
-    - Provider Arrangemnets
+    - DONE Waiting periods
+    - DONE Availability 
+    - DONE Available for 
+    - DONE Travel and accom benefits 
+    - DONE Accident Cover 
+    - DONE Provider Arrangemnets
+    - DONE Issue Date
+    - DONE General Other
+    - Hospital Other
     '''
-    print(pdf_text)
+    # Gets hospital other
+    hosp_other = "-"
+    pattern = re.compile(r'Other features of this hospital cover\s{2}((.+\s)+)')
+    matches = pattern.finditer(pdf_text)
+    for match in matches:
+        hosp_other = match.group(1)
+
+    # Gets issue date
+    issue_date = "-"
+    pattern = re.compile(r'Date statement issued: (.+)+')
+    matches = pattern.finditer(pdf_text)
+    for match in matches:
+        string = pdf_text[match.span()[0]:match.span()[1]]
+        issue_date = string
+
+    # Get general other
+    general_other = "-"
+    # pattern = re.compile(r'Other features of this general treatment cover(\s{2}((.+\s)+)+)')
+    pattern = re.compile(r'Other features of this general treatment cover([.\s\S]+)Ambulance cover')
+    matches = pattern.finditer(pdf_text)
+    for match in matches:
+        general_other = match.group(1).strip()
+        if "PolicyID:" in general_other:
+            cut = general_other.index('Page')
+            general_other = general_other[cut+12:len(general_other)-16]
+
+    # Gets availability
+    avail = "-"
+    pattern = re.compile(r'\bAvailable in (.+)+')
+    matches = pattern.finditer(pdf_text)
+    for match in matches:
+        string = pdf_text[match.span()[0]:match.span()[1]]
+        avail = string
+
+    # Gets travel benefits and accident cover.
+    pattern = re.compile(r'\bThis policy (.+\s)+')
+    matches = pattern.finditer(pdf_text)
+    accident_cover = "-"
+    travel_benefits = "-"
+    for match in matches:
+        string = pdf_text[match.span(0)[0]:match.span(0)[1]]
+        if 'travel' in string:
+            travel_benefits = string
+        if 'accident' in string:
+            accident_cover = string
+    
+    # Gets waiting period.
+    pattern = re.compile(r'\bWaiting periods:\s{2}(.+\s)+')
+    matches = pattern.finditer(pdf_text)
+    wait = "-"
+    for match in matches:
+        string = pdf_text[match.span(0)[0]:match.span(0)[1]]
+        wait = string
+
+    # Gets provider arrangments
+    pattern = re.compile(r'\bGeneral Treatment Cover\s{2}((.+\s)+)')
+    matches = pattern.finditer(pdf_text)
+    prov_arr = "-"
+    for match in matches:
+        string = pdf_text[match.span(0)[0]:match.span(0)[1]]
+        if 'providers' in string:
+            prov_arr = match.group(1)
+
+    # Get available for.
+    pattern = re.compile(r'\bMembership of this (.+\s)+')
+    matches = pattern.finditer(pdf_text)
+    avail_for = "-"
+    for match in matches:
+        string = pdf_text[match.span(0)[0]:match.span(0)[1]]
+        avail_for = string
+    
+    return NewHospInfo(wait, avail, avail_for, travel_benefits, accident_cover, \
+        prov_arr, issue_date, general_other, hosp_other)
+    
 
 def read_general_new_pdf(pdf_path, pol_type, n_pages):
     '''
     Gets all the general services.
     '''
+    if pol_type == HOSPITAL:
+        return {}
+
     if pol_type == GEN_TREATMENT:
         if n_pages == 1:
             pages = '1'
@@ -128,10 +368,10 @@ def read_general_new_pdf(pdf_path, pol_type, n_pages):
     # Gets the general tables.
     tables = camelot.read_pdf(pdf_path, pages)
     n_tables = len(tables)
-    tables[0].to_csv('tmp.csv')
+    tables[0].to_csv(TEMP_CSV)
     
     services = {}
-    f1 = open('tmp.csv')
+    f1 = open(TEMP_CSV)
     csv_f = csv.reader(f1)
     for row in csv_f:
         if 'Treatment' in row[SERVICE]:
@@ -139,6 +379,8 @@ def read_general_new_pdf(pdf_path, pol_type, n_pages):
         name = row[SERVICE]
         wait = row[NEW_WAIT_PERIOD]
         limits = row[NEW_BENEFIT_LIMITS]
+        if limits == "":
+            limits = "Same as previous."
         max_ben = row[NEW_MAX_BENEFITS]
 
         serv = Service(name, "Yes", wait, limits, max_ben)
@@ -146,8 +388,8 @@ def read_general_new_pdf(pdf_path, pol_type, n_pages):
     f1.close()
 
     if n_tables > 1:
-        tables[n_tables-1].to_csv('tmp.csv')
-        f2 = open('tmp.csv')
+        tables[n_tables-1].to_csv(TEMP_CSV)
+        f2 = open(TEMP_CSV)
         csv_f = csv.reader(f2)
         for row in csv_f:
             name = row[SERVICE]
@@ -157,11 +399,13 @@ def read_general_new_pdf(pdf_path, pol_type, n_pages):
             serv = Service(name, "Yes", wait, limit, max_ben)
             services[name] = serv
         f2.close()
-    
     return services
     
 
 def old_populate_excel(web_policy, pdf_info, ws, input_row):
+    '''
+    This function populates old PDF into excel sheets.
+    '''
     # Input web policy information.
     if pdf_info.pdf_type == OLD_PDF:
         ws.cell(row=input_row, column=COL_PDF_TYPE).value = "OLD"
@@ -204,13 +448,14 @@ def old_populate_excel(web_policy, pdf_info, ws, input_row):
     for c in web_policy.limited_cover:
         limited_cover += f"{c}, "
     ws.cell(row=input_row, column=COL_HOSP_LIMITED).value = limited_cover
-    ws.cell(row=input_row, column=COL_OTHER_HOSP).value = web_policy.other_hosp_feature
+    ws.cell(row=input_row, column=COL_OTHER_HOSP).value = pdf_info.hosp_other
 
     # Inputting general details.
+    if pdf_info.services is None:
+        return 
     for service in pdf_info.services:
         col = ''
         s = service.lower()
-        print(s)
         if 'general' in s:
             col = COL_GENERAL_DENTAL
         elif 'major' in s:
@@ -276,20 +521,19 @@ def old_populate_excel(web_policy, pdf_info, ws, input_row):
             ws.cell(row=input_row, column=col+2).value = pdf_info.services[service].max_benefits
 
 
-def scrape_old_pdf(pdf_text, pol_type):
+def scrape_old_pdf(pdf_path, pdf_text, pol_type):
     '''
     This function scrapes the old pdf for wanted information.
     '''
-    print("Scraping old pdf...")
 
-    pdf_hosp_info = read_hosp_page_old_pdf(pdf_text)
-    if pol_type == 'Hospital':
+    pdf_hosp_info = read_hosp_page_old_pdf(pdf_path, pdf_text, pol_type)
+    if pol_type == HOSPITAL:
         return pdf_hosp_info
-    pdf_info = read_general_old_pdf(pdf_text, pdf_hosp_info, pol_type)
+    pdf_info = read_general_old_pdf(pdf_path, pdf_text, pdf_hosp_info, pol_type)
     return pdf_info
     
 
-def read_general_old_pdf(pdf_text, oldpdf_class, pol_type):
+def read_general_old_pdf(pdf_path, pdf_text, oldpdf_class, pol_type):
     '''
     This functions reads the general treatment page in the old pdf.
     '''
@@ -299,7 +543,7 @@ def read_general_old_pdf(pdf_text, oldpdf_class, pol_type):
         page = 1
 
     # Converts the general table in PDF into CSV format. 
-    tabula.convert_into(f"{sys.path[0]}/temp/NJKD20.pdf", TEMP_CSV, \
+    tabula.convert_into(pdf_path, TEMP_CSV, \
         lattice=True, spreadsheet=True, pages=page, output_format='csv')
 
     f = open(TEMP_CSV)
@@ -307,6 +551,7 @@ def read_general_old_pdf(pdf_text, oldpdf_class, pol_type):
 
     prov_arr = "None"
     services = {}
+    other = "-"
     for row in csv_f:
         # Special cases:
         if 'PROVIDER ARRANGEMENTS:' in row[SERVICE]:
@@ -334,7 +579,6 @@ def read_general_old_pdf(pdf_text, oldpdf_class, pol_type):
             if cover == "Yes" and limit == '-':
                 limit = "Same as previous."
             cur_service = Service(name, cover, wait, limit, max_benefits)
-            print("CUR SERVICE", cur_service)
             services[name] = cur_service
     f.close()
     oldpdf_class.prov_arr = prov_arr
@@ -343,7 +587,7 @@ def read_general_old_pdf(pdf_text, oldpdf_class, pol_type):
     return oldpdf_class
 
 
-def read_hosp_page_old_pdf(pdf_text):
+def read_hosp_page_old_pdf(pdf_path, pdf_text, pol_type):
     '''
     This function reads the hospital page in the pdf and scrapes 
     for its issue date and available for.
@@ -361,14 +605,16 @@ def read_hosp_page_old_pdf(pdf_text):
             avail_for = line
             break
     
+    if pol_type == GEN_TREATMENT:
+        return oldPdfInfo(OLD_PDF, "-", {}, issue_date, avail_for, "-", "-", "-", "-")
     # Read rest of hospital page.
-    tabula.convert_into(f"{sys.path[0]}/temp/NJKD20.pdf", TEMP_CSV, \
+    tabula.convert_into(pdf_path, TEMP_CSV, \
         lattice=True, spreadsheet=True, pages=1, output_format='csv')
 
     f = open(TEMP_CSV)
     csv_f = csv.reader(f)
 
-    waiting_period = ""; payable = ""
+    waiting_period = "-"; payable = "-"; hosp_other = "-"
     for row in csv_f:
         # Find waiting period.
         if 'HOW LONG ARE THE WAITING' in row[SERVICE]:
@@ -376,9 +622,12 @@ def read_hosp_page_old_pdf(pdf_text):
         # Find hospital payables. 
         if 'WILL I HAVE TO PAY' in row[SERVICE]:
             payable = row[INFO]
+        # Other hospital features
+        if 'OTHER FEATURES' in row[SERVICE]:
+            hosp_other = row[INFO]
     f.close()
 
-    return oldPdfInfo(OLD_PDF, None, None, issue_date, avail_for, payable, waiting_period, None)
+    return oldPdfInfo(OLD_PDF, "-", {}, issue_date, avail_for, payable, waiting_period, "-", hosp_other)
     
 
 def download_pdf(url, dest):
@@ -474,7 +723,6 @@ def get_pdf_type(pdf_text):
     This function returns OLD_PDF for old ones, and 
     NEW_PDF for new ones.
     '''
-    print(type(pdf_text))
     if OLD_TITLE in pdf_text:
         return OLD_PDF
     elif NEW_TITLE in pdf_text:
@@ -482,14 +730,28 @@ def get_pdf_type(pdf_text):
 
 
 if __name__ == "__main__":
-    pdf_path = f"{sys.path[0]}/temp/WAOY1D.pdf"
-    pol_type = COMBINED_TREATMENT
-    n_pages  = 4
+    pdf_path = f"{sys.path[0]}/temp/temp.pdfNIB11.pdf"
+    pol_type = GEN_TREATMENT
+    n_pages  = 2
     text = pdf_to_text(pdf_path)
-    read_hosp_page_new_pdf(text)
+    # print(text)
+    crit = Criteria("000101")
+    web_policy = WebPolicy("ESH", "Gold Hospital", "link", "Open", crit, "100", "none", "No copay", 'No agedisc', 'exempted', 'a', 'b', ['a','b'], ['c','d'], ['e','f'], 'ABC')
+    pdf_info = scrape_new_pdf(pdf_path, web_policy)
+    # pdf_info = scrape_old_pdf(pdf_path, text, web_policy.criteria.pol_type)
+    # print(pdf_info.hosp.general_other)
+    # # read_hosp_page_new_pdf(text)
+    # crit = Criteria("000200")
+    # web_policy = WebPolicy("ACA", "Something", "abc", "Open", crit, "100", "no excess", "no copay", "no age disc", "no medicare", "no", "no", ['a', 'b'], ['c','d'], ['e','f'], "other", "J100")
+    # pdf_info = scrape_new_pdf(pdf_path, web_policy)
 
-
-
+    # sheet = "results.xlsx"
+    # create_excel(sheet)
+    # wb = load_workbook(sheet)
+    # ws = wb.active
+    # print("inputting into sheet")
+    # new_populate_excel(web_policy, pdf_info, ws, 2)
+    # wb.save(sheet)
 
     # text = pdf_to_text(r"temp/NJKD20.pdf")
     # print(text)

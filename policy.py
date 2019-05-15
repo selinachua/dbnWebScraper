@@ -5,13 +5,13 @@
 #
 # This file contains the policy class.
 # This class will contain everything that needs to be
-# populated for the excel spread sheet.
+# populated for the excel spread sheet that was scraped from the web.
 '''
 
 class WebPolicy():
     def __init__(self, fund_name, name, pdf_link, status, criteria, premium, excess, co_pay, age_disc,
                     medicare, hosp_accom, hosp_tier, covered, not_covered, limited_cover,
-                    other_hosp_feature, pol_id):
+                    pol_id):
         self.fund_name = fund_name
         self.name = name
         self.pdf_link = pdf_link
@@ -27,7 +27,6 @@ class WebPolicy():
         self.covered = covered
         self.not_covered = not_covered
         self.limited_cover = limited_cover
-        self.other_hosp_feature = other_hosp_feature
         self.id = pol_id
 
     def __str__(self):
@@ -45,7 +44,6 @@ class WebPolicy():
             f"Covered: {self.covered}\n"
             f"Not Covered: {self.not_covered}\n"
             f"Limited Cover: {self.limited_cover}\n"
-            f"Other Hosptial Features: {self.other_hosp_feature}\n"
             f"Policy ID: {self.id}\n"
         )
         string += self.criteria.__str__()

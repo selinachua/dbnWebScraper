@@ -1,4 +1,11 @@
-
+'''
+# Created by:
+# Selina Chua
+# selina.a.chua@gmail.com
+#
+# This file contains a class that stores information
+# for general services.
+'''
 
 class Service():
     def __init__(self, name, cover, wait, limits, max_benefits):

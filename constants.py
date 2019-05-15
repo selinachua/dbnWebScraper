@@ -17,17 +17,16 @@ SLASH = '/'
 # ==================================================================
 
 MAIN_URL       = "https://www.privatehealth.gov.au"
-FUND_LIST_LINK = MAIN_URL + "/dynamic/Insurer"
-RESULTS_LINK = "/ResultsPartial/"
-COMPARE_LINK = FUND_LIST_LINK + "/Compare/"
-GET_COMPARE_LINK = MAIN_URL + "/dynamic/Search/Compare/"
-DOWNLOAD_LINK = "/dynamic/Download/"
-EXCEL_SHEET = sys.path[0] + "/results/"
-TEMP_PDF = sys.path[0] + "/temp/"
-TEMP_CSV = sys.path[0] + "/temp/output.csv"
-# TEMP_PDF = sys.path[0] + SLASH + "temp" + SLASH + "temp.pdf"
-# EXCEL_SHEET = sys.path[0] + SLASH + "results" + SLASH
-TEMP_CSV = sys.path[0] + SLASH + "temp" + SLASH + "output.csv"
+FUND_LIST_LINK = MAIN_URL + SLASH + "dynamic" + SLASH + "Insurer"
+RESULTS_LINK = SLASH + "ResultsPartial" + SLASH
+COMPARE_LINK = FUND_LIST_LINK + SLASH + "Compare" + SLASH
+GET_COMPARE_LINK = MAIN_URL + SLASH + "dynamic" + SLASH + "Search" + SLASH + "Compare" + SLASH
+DOWNLOAD_LINK = SLASH + "dynamic" + SLASH + "Download" + SLASH
+
+TEMP_FILE = SLASH + "temp" + SLASH
+EXCEL_SHEET = sys.path[0] + SLASH + "results" + SLASH
+TEMP_PDF = sys.path[0] + SLASH + "temp" + SLASH + "temp.pdf"
+TEMP_CSV = sys.path[0] + SLASH + "temp" + SLASH + "temp.csv"
 
 RESUME_FILE   = 'resume.txt'
 CRITERIA_FILE = 'criteria.txt'
@@ -35,7 +34,7 @@ SCRAPED_FILE  = 'scraped.txt'
 
 # ==================================================================
 # Following constants are for Criteria Selection in web scraping.
-# ==================================================================
+# ========================......................//;...==========================================
 
 # Criteria Selection
 STATE     = 0
@@ -198,7 +197,6 @@ COL_ACCIDENT_COV      = 115
 # ==================================================================
 
 TITLE = '''============== dbn Web Scraper ==============='''
-LAST_UPDATE = "... Last updated 02/04/19 ..."
 NO_POLICIES_STR = "There are no policies that match your selections."
 
 # H_REF of a fund link is stored as a tuple in the dictionary value.
